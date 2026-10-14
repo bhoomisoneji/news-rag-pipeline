@@ -1,6 +1,6 @@
 # Sample query results
 
-Generated at 2026-10-14T11:32:25.189574+05:30 from the local corpus and Chroma index.
+Generated at 2026-10-15T00:16:51.594430+05:30 from the local corpus and Chroma index.
 Answers are extractive or structured from stored records; they are not LLM-generated.
 
 ## Query 1
