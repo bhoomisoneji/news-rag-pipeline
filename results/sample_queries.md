@@ -1,6 +1,6 @@
 # Sample query results
 
-Generated at 2026-10-15T00:16:51.594430+05:30 from the local corpus and Chroma index.
+Generated at 2026-10-15T20:25:09.475298+05:30 from the local corpus and Chroma index.
 Answers are extractive or structured from stored records; they are not LLM-generated.
 
 ## Query 1
@@ -9,7 +9,7 @@ Answers are extractive or structured from stored records; they are not LLM-gener
 
 **Answer:**
 
-But the decisions around cost, speed, data, and business outcomes are increasingly intertwined. For enterprises and startups, the challenge is to identify which parts of the AI stack can create a lasting advantage and which to source externally as the technology evolves. These questions shaped the second roundtable held on the sidelines of Inc42’s inaugural CTO Summit 2026 , where technology leaders discussed how they are building AI-led systems and organisations. s inaugural CTO Summit 2026 , where technology leaders discussed how they are building AI-led systems and organisations. Moderated by Abhinav Johri, partner, technology consulting, EY India, the conversation brought together: Building An Edge With Context And Workflows The conversation began with a question: as AI moves from experimentation into core business processes, does every problem require a new technology layer? Matters.ai’s Sahu argued that the starting point should be a deep understanding of the domain.
+For enterprises and startups, the challenge is to identify which parts of the AI stack can create a lasting advantage and which to source externally as the technology evolves. These questions shaped the second roundtable held on the sidelines of Inc42’s inaugural CTO Summit 2026, where technology leaders discussed how they are building AI-led systems and organisations. But it found that much of the traffic coming from AI platforms was being wrongly counted as direct website visits. This led the startup to shift its focus to helping brands sell directly through AI platforms.
 
 **Source URLs:**
 - https://inc42.com/buzz/build-buy-or-rent-how-indian-ctos-are-rethinking-the-ai-stack
@@ -42,7 +42,7 @@ Mesa School — INR 1,100,000,000 (Series A); Mesa School Bags ₹110 Cr To Laun
 
 **Answer:**
 
-Mesa School Bags ₹110 Cr To Launch New On-Campus Courses
+Mesa School Bags ₹110 Cr To Launch New On-Campus Courses: Bengaluru-based Mesa School of Business has raised ₹110 Cr ($11.4 Mn) in its Series A funding round in a mix of debt and equity. The round pegged the business school at a post-money valuation of ₹385 Cr ($40 Mn), cofounder Ankit Agarwal told Inc42. While the ₹85 Cr equity round was co-led by Dharana Capital and existing backer Elevation Capital, the remaining ₹25 Cr was raised via venture debt from InnoVen Capital and Alteria Capital.
 
 **Source URLs:**
 - https://inc42.com/buzz/mesa-school-bags-₹110-cr-to-launch-new-on-campus-courses
@@ -114,7 +114,7 @@ No investor name was extracted from more than one funding round in this collecti
 
 **Answer:**
 
-Around 2,000 industry professionals have interacted with our students in some capacity, Agarwal said. “The institutions just don’t have the capability or the incentives to keep changing their curriculum and to keep it super agile over time, and that’s where we felt that we should come in and create talent for the startup ecosystem across levels and functions,” Agarwal said. On the business front, Mesa’s revenue comes primarily from programme fees, which it collects annually and largely in advance. The experienced-professional postgraduate programme contributes around 40% of revenue, while the undergraduate programme accounts for 35-40%. The fresh-graduate programme contributes around 20%, according to Agarwal. duates take up roles across founders’ offices, product management, partnerships, account management and venture capital.
+On the business front, Mesa’s revenue comes primarily from programme fees, which it collects annually and largely in advance. The experienced-professional postgraduate programme contributes around 40% of revenue, while the undergraduate programme accounts for 35-40%. He also claimed that Mesa has so far incubated more than 50 student startups, which have clocked ₹50 Cr in annual revenue.
 
 **Source URLs:**
 - https://inc42.com/buzz/mesa-school-bags-₹110-cr-to-launch-new-on-campus-courses

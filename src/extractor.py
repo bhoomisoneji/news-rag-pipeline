@@ -136,10 +136,36 @@ AMOUNT_PATTERN = re.compile(
     r"(?:USD|INR|Rs\.?|₹|\$)\s?([0-9]+(?:\.[0-9]+)?)\s*(billion|bn|million|mn|crore|cr|lakh|lc)?",
     re.I,
 )
+
 INVESTOR_PATTERN = re.compile(
-    r"(?:led by|participant(?:s)?(?: include[d]?)?|investors?(?: include[d]?)?|backed by)\s+([A-Z][\w&.\- ]{2,80})",
+    r"(?:led by|participant(?:s)?(?: include[d]?)?|"
+    r"investors?(?: include[d]?)?|backed by|from)\s+"
+    r"([A-Z][A-Za-z0-9&.-]*(?:\s+[A-Z][A-Za-z0-9&.-]*){0,5})",
     re.I,
 )
+
+def clean_investor_name(name: str) -> str:
+    name = name.strip(" .,:;-")
+
+    stop_phrases = [
+        " plans",
+        " said",
+        " announced",
+        " will ",
+        " has ",
+        " have ",
+        " is ",
+        " are ",
+    ]
+
+    lower_name = name.lower()
+    for phrase in stop_phrases:
+        pos = lower_name.find(phrase)
+        if pos != -1:
+            name = name[:pos].strip(" .,:;-")
+            lower_name = name.lower()
+
+    return name
 PERSON_PATTERN = re.compile(
     r"\b(?:CEO|CTO|CFO|COO|founder|co-founder|cofounder|managing director|MD)\s+"
     r"([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})",
@@ -302,24 +328,40 @@ def clean_body(soup: BeautifulSoup) -> str:
 
 
 
+
 def summarise(body: str) -> str:
     text = re.sub(r"\s+", " ", body).strip()
 
     if not text:
-        text = re.sub(r"\s+", " ", body).strip()
+        return ""
 
     sentences = re.split(r"(?<=[.!?])\s+", text)
-    chosen = [s.strip() for s in sentences if len(s.strip()) > 30][:3]
+    chosen = []
+    seen = set()
+
+    for sentence in sentences:
+        sentence = re.sub(r"\s+", " ", sentence).strip()
+        sentence = re.sub(r"\s+([,.;:!?])", r"\1", sentence)
+
+        if len(sentence) < 40:
+            continue
+
+        key = re.sub(r"[^\w]+", " ", sentence.lower()).strip()
+
+        if key in seen:
+            continue
+
+        seen.add(key)
+        chosen.append(sentence)
+
+        if len(chosen) == 3:
+            break
 
     if not chosen:
-        chosen = sentences[:3]
+        return " ".join(text.split()[:60])
 
-    summary = " ".join(chosen).strip()
+    return " ".join(chosen)
 
-    if not summary:
-        summary = " ".join(text.split()[:60])
-
-    return summary
 
 
 
@@ -458,21 +500,28 @@ def extract_funding(title: str, body: str, published_at: datetime) -> FundingInf
     round_match = ROUND_PATTERN.search(" ".join(sentences[:8]))
     round_name = round_match.group(0).title() if round_match else None
 
-    # Extract investors only from the funding announcement sentence.
+
+
+    # Extract investors from the opening funding announcement.
     investors: list[str] = []
+
     for match in INVESTOR_PATTERN.finditer(" ".join(sentences[:8])):
         chunk = re.split(
             r"\s+(?:and|with|to|in|for)\s+",
             match.group(1),
         )[0]
+
         names = [
             part.strip(" .")
             for part in re.split(r",| and ", chunk)
             if part.strip()
         ]
+
         for name in names:
             if 2 < len(name) < 80 and name not in investors:
                 investors.append(name)
+
+
 
     if amount is None and round_name is None and not investors:
         return None

@@ -38,22 +38,96 @@ def source_urls(records: list[ArticleRecord]) -> list[str]:
     return urls
 
 
-def extractive_from_chunks(chunks: list[str], limit: int = 6) -> str:
-    sentences: list[str] = []
+
+
+
+def extractive_from_chunks(
+    chunks: list[str],
+    limit: int = 4,
+    query: str = "",
+) -> str:
+    stop_words = {
+        "what", "which", "who", "when", "where", "why", "how",
+        "the", "is", "are", "was", "were", "a", "an", "and",
+        "or", "of", "in", "on", "to", "for", "about", "this",
+        "that", "with", "from", "did", "does", "do", "has",
+        "have", "had", "it", "its", "their", "they", "them",
+        "me", "my", "can", "could", "would", "should",
+    }
+
+    query_terms = {
+        word
+        for word in re.findall(r"\b[a-zA-Z]{2,}\b", query.lower())
+        if word not in stop_words
+    }
+
+    candidates = []
+    seen = set()
+
     for chunk in chunks:
-        for sentence in re.split(r"(?<=[.!?])\s+", chunk.strip()):
-            clean = sentence.strip()
-            if len(clean) < 40:
+        chunk = re.sub(r"\s+", " ", chunk).strip()
+        sentences = re.split(r"(?<=[.!?])\s+", chunk)
+
+        # Skip a partial opening sentence from an overlapping chunk.
+        if chunk and not chunk[0].isupper():
+            sentences = sentences[1:]
+
+        for sentence in sentences:
+            sentence = re.sub(r"\s+", " ", sentence).strip()
+            sentence = re.sub(r"\s+([,.;:!?])", r"\1", sentence)
+
+            if len(sentence) < 40:
                 continue
-            if clean not in sentences:
-                sentences.append(clean)
-            if len(sentences) >= limit:
-                return " ".join(sentences)
-    if sentences:
-        return " ".join(sentences)
-    if chunks:
-        return chunks[0][:800]
-    return "No supporting passages were retrieved from the corpus."
+
+            key = re.sub(r"\W+", " ", sentence.lower()).strip()
+
+            if key in seen:
+                continue
+            seen.add(key)
+
+            terms = set(
+                re.findall(r"\b[a-zA-Z]{2,}\b", sentence.lower())
+            )
+            overlap = len(query_terms & terms)
+
+            if overlap > 0:
+                candidates.append((overlap, sentence))
+
+    candidates.sort(key=lambda item: item[0], reverse=True)
+
+    selected = []
+    selected_word_sets = []
+
+    for score, sentence in candidates:
+        words = set(
+            re.findall(r"\b[a-zA-Z]{3,}\b", sentence.lower())
+        )
+
+        too_similar = any(
+            len(words & previous) / max(1, len(words | previous)) > 0.60
+            for previous in selected_word_sets
+        )
+
+        if too_similar:
+            continue
+
+        selected.append(sentence)
+        selected_word_sets.append(words)
+
+        if len(selected) >= limit:
+            break
+
+    if not selected:
+        return (
+            "Retrieved passages did not contain enough query-specific "
+            "information to form a reliable answer."
+        )
+
+    return " ".join(selected)
+
+
+
+
 
 
 def refuse(reason: str) -> dict:
@@ -121,6 +195,86 @@ def filter_records(
     return matched
 
 
+
+_STOP_WORDS = {
+    "what", "which", "who", "when", "where", "why", "how",
+    "the", "is", "are", "was", "were", "a", "an", "and", "or",
+    "of", "in", "on", "to", "for", "about", "this", "that",
+    "with", "from", "did", "does", "do", "has", "have", "had",
+    "main", "stories", "collection", "article", "titled",
+}
+
+_TERM_ALIASES = {
+    "ai": {"ai", "artificial", "intelligence"},
+    "artificial": {"ai", "artificial", "intelligence"},
+    "intelligence": {"ai", "artificial", "intelligence"},
+}
+
+
+def _tokenize(text: str) -> set[str]:
+    return set(re.findall(r"\b[a-zA-Z]{2,}\b", text.lower()))
+
+
+def _query_terms(query: str) -> set[str]:
+    base = {word for word in _tokenize(query) if word not in _STOP_WORDS}
+    expanded = set(base)
+    for word in base:
+        expanded.update(_TERM_ALIASES.get(word, set()))
+    return expanded
+
+
+def keyword_overlap(query: str, document: str) -> int:
+    terms = _query_terms(query)
+    if not terms:
+        return 0
+    words = _tokenize(document)
+    hay = document.lower()
+    score = len(terms & words)
+    if "ai" in terms and "artificial intelligence" in hay:
+        score += 2
+    return score
+
+
+def hybrid_rerank(
+    query: str,
+    documents: list[str],
+    metadatas: list[dict],
+    distances: list[float],
+    keep: int = 5,
+) -> tuple[list[str], list[dict], list[float]]:
+    """Blend vector rank with keyword overlap (reciprocal rank fusion).
+
+    Structured queries never reach this path. For semantic/pinpoint retrieval
+    it prefers chunks that both embed nearby and mention query terms, without
+    a second model.
+    """
+    if not documents:
+        return documents, metadatas, distances
+    keyword_scores = [keyword_overlap(query, document) for document in documents]
+    vector_order = sorted(
+        range(len(documents)),
+        key=lambda i: (distances[i], i),
+    )
+    keyword_order = sorted(
+        range(len(documents)),
+        key=lambda i: (-keyword_scores[i], distances[i], i),
+    )
+    rrf: dict[int, float] = {}
+    for rank, index in enumerate(vector_order):
+        rrf[index] = rrf.get(index, 0.0) + 1.0 / (60 + rank)
+    for rank, index in enumerate(keyword_order):
+        rrf[index] = rrf.get(index, 0.0) + 1.0 / (60 + rank)
+    fused = sorted(
+        range(len(documents)),
+        key=lambda i: (-rrf[i], -keyword_scores[i], distances[i], i),
+    )[:keep]
+    return (
+        [documents[i] for i in fused],
+        [metadatas[i] for i in fused],
+        [distances[i] for i in fused],
+    )
+
+
 def semantic_search(
     collection,
     query: str,
@@ -133,17 +287,46 @@ def semantic_search(
         "n_results": n_results,
         "include": ["documents", "metadatas", "distances"],
     }
+
     if article_ids:
         if len(article_ids) == 1:
             kwargs["where"] = {"article_id": article_ids[0]}
         else:
             kwargs["where"] = {"article_id": {"$in": article_ids}}
-        kwargs["n_results"] = min(n_results, max(len(article_ids) * 3, 3))
+
+        kwargs["n_results"] = min(max(n_results, 8), max(len(article_ids) * 3, 3))
+    else:
+        kwargs["n_results"] = max(n_results, 8)
+
     result = collection.query(**kwargs)
+
     documents = (result.get("documents") or [[]])[0]
     metadatas = (result.get("metadatas") or [[]])[0]
     distances = (result.get("distances") or [[]])[0]
-    return documents, metadatas, distances
+
+    # Keep only the best chunk from each article.
+    selected_documents = []
+    selected_metadatas = []
+    selected_distances = []
+    seen_articles = set()
+
+    for document, metadata, distance in zip(
+        documents, metadatas, distances
+    ):
+        article_id = metadata.get("article_id", "")
+
+        if article_id and article_id in seen_articles:
+            continue
+
+        if article_id:
+            seen_articles.add(article_id)
+
+        selected_documents.append(document)
+        selected_metadatas.append(metadata)
+        selected_distances.append(distance)
+
+    return hybrid_rerank(query, selected_documents, selected_metadatas, selected_distances)
+
 
 
 def answer_semantic(
@@ -155,27 +338,35 @@ def answer_semantic(
     documents, metadatas, distances = semantic_search(
         collection, query, article_ids=article_ids
     )
+
     if not documents:
         return refuse(
             "The collection does not contain enough supporting text to answer this question."
         )
+
     best = cosine_to_similarity(distances[0] if distances else None)
+
     if article_ids is None and best < OUT_OF_CORPUS_THRESHOLD:
         return refuse(
             "This question does not appear to be supported by the collected articles, "
             "so no answer is provided."
         )
+
     lookup = records_by_id(records)
     used: list[ArticleRecord] = []
+
     for meta in metadatas:
         record = lookup.get(meta.get("article_id", ""))
         if record and record not in used:
             used.append(record)
+
     return {
-        "answer": extractive_from_chunks(documents),
+        "answer": extractive_from_chunks(documents, query=query),
         "sources": source_urls(used),
         "mode": "extractive_semantic",
     }
+
+
 
 
 def format_funding_line(record: ArticleRecord) -> str:
@@ -217,7 +408,13 @@ def answer_funding_window(records: list[ArticleRecord], days: int) -> dict:
 
 
 
-def answer_company(collection, records: list[ArticleRecord], company: str, query: str) -> dict:
+
+def answer_company(
+    collection,
+    records: list[ArticleRecord],
+    company: str,
+    query: str,
+) -> dict:
     matched = filter_records(records, company=company)
 
     if not matched:
@@ -227,7 +424,6 @@ def answer_company(collection, records: list[ArticleRecord], company: str, query
             "mode": "structured_filter",
         }
 
-    # Prefer the actual article summaries over unrelated semantic chunks.
     relevant = [
         record for record in matched
         if company.lower() in (
@@ -235,18 +431,25 @@ def answer_company(collection, records: list[ArticleRecord], company: str, query
         ).lower()
     ]
 
-    if relevant:
-        return {
-            "answer": " ".join(record.title for record in relevant[:3]),
-            "sources": source_urls(relevant[:3]),
-            "mode": "structured_filter",
-        }
+    if not relevant:
+        relevant = matched
+
+    relevant = relevant[:3]
+    lines = []
+
+    for record in relevant:
+        summary = (record.summary or "").strip()
+        if summary:
+            lines.append(f"{record.title}: {summary}")
+        else:
+            lines.append(record.title)
 
     return {
-        "answer": " ".join(record.title for record in matched[:3]),
-        "sources": source_urls(matched[:3]),
+        "answer": "\n\n".join(lines),
+        "sources": source_urls(relevant),
         "mode": "structured_filter",
     }
+
 
 
 def answer_location(records: list[ArticleRecord], location: str) -> dict:
@@ -359,7 +562,10 @@ def answer_title(collection, records: list[ArticleRecord], title: str, query: st
             for sent in re.split(r"(?<=[.!?])\s+", record.body)
             if REVENUE_RE.search(sent)
         ]
-    text = extractive_from_chunks(revenue_chunks or documents)
+    text = extractive_from_chunks(
+    revenue_chunks or documents,
+    query="revenue" if REVENUE_RE.search(query) else query,
+    )
     return {
         "answer": text,
         "sources": [record.url],

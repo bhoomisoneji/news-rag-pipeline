@@ -11,6 +11,7 @@ from bs4 import BeautifulSoup
 
 from src.config import (
     FAILED_URLS_PATH,
+    INCREMENTAL_MAX_NEW,
     LISTING_PATHS,
     MANIFEST_PATH,
     MAX_RETRIES,
@@ -207,7 +208,7 @@ def already_saved() -> dict[str, dict]:
     return saved
 
 
-def scrape() -> dict[str, int]:
+def scrape(*, incremental: bool = False, max_new: int | None = None) -> dict[str, int]:
     ensure_dirs(RAW_DIR, FAILED_URLS_PATH.parent)
     session = build_session()
     policy = load_robots(session)
@@ -216,12 +217,15 @@ def scrape() -> dict[str, int]:
     downloaded = 0
     skipped = 0
     failed = 0
+    new_cap = max_new if max_new is not None else INCREMENTAL_MAX_NEW
 
     for url in urls:
         html_files = list(RAW_DIR.glob("*.html"))
-        if len(html_files) >= MIN_SAVED_ARTICLES:
+        if not incremental and len(html_files) >= MIN_SAVED_ARTICLES:
             break
-        if len(saved) >= MAX_SAVED_ARTICLES:
+        if incremental and downloaded >= new_cap:
+            break
+        if not incremental and len(saved) >= MAX_SAVED_ARTICLES:
             break
         doc_id = article_id(url)
         html_path = RAW_DIR / f"{doc_id}.html"
