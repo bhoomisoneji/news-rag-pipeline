@@ -1,135 +1,136 @@
 # News RAG Pipeline
 
-A four-stage pipeline that turns Inc42 technology and business articles into a local, searchable knowledge base. Each stage writes its output to disk so it can be re-run on its own.
+A four-stage pipeline that turns Inc42 technology and business articles into a local, searchable knowledge base. Each stage writes its output to disk so it can be rerun independently.
 
-**Source:** [Inc42](https://inc42.com) (RSS feed plus section listing pages).
+**Source:** [Inc42](https://inc42.com/) (RSS feed plus section listing pages).
 
 ## Setup
 
-From the project root, on Windows PowerShell:
+From the project root, open Windows PowerShell.
+
+### 1. Create a virtual environment
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\activate
-pip install -r requirements.txt
-copy .env.example .env
+.\.venv\Scripts\Activate.ps1
+```
+
+If PowerShell blocks script activation, use `.\.venv\Scripts\python.exe` instead of activating the environment.
+
+### 2. Install dependencies
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+If you did not activate the environment, run:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+### 3. Configure environment variables
+
+If the project requires a local `.env` file, copy the example:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+The default embedding and query pipeline uses local sentence-transformer embeddings and does not require an LLM API key. Optional integrations may have additional requirements.
+
+### 4. Run the pipeline
+
+Run each stage from the project root:
+
+```powershell
 python scrape.py
 python extract.py
 python index.py
-python query.py --samples
-python -m pytest
 ```
 
-No API keys are required. Embeddings run locally with `sentence-transformers`.
+Generate the sample query report and run the tests:
 
-Single question after indexing:
+```powershell
+python query.py --samples
+python -m pytest -q
+```
+
+If you are not using the activated environment, replace `python` with `.\.venv\Scripts\python.exe`.
+
+### 5. Ask a single question
+
+After indexing:
 
 ```powershell
 python query.py "What are the main stories about AI in this collection?"
 ```
 
+### 6. Launch the Streamlit interface
+
+Install the dependencies listed in `requirements.txt`, then run:
+
+```powershell
+python -m streamlit run app.py
+```
+
+The interface normally opens at `http://localhost:8501`. The UI depends on the installed packages being compatible with your Python environment.
+
+### 7. Run evaluation
+
+```powershell
+python evaluate.py
+```
+
+The evaluation report is written to `results/evaluation.md`.
+
 ## Pipeline
 
-1. **Scrape** (`scrape.py`) — verify `robots.txt`, collect article URLs, download untouched HTML, write `data/raw/<id>.html` and `data/raw/manifest.jsonl`.
-2. **Extract** (`extract.py`) — parse HTML into schema-validated JSON at `data/records/<id>.json`.
-3. **Index** (`index.py`) — chunk article bodies, embed them, store vectors and metadata in Chroma at `data/chroma`.
-4. **Query** (`query.py`) — mix semantic search with structured filters over the JSON records. `--samples` writes `results/sample_queries.md`.
+1. **Scrape** (`scrape.py`) collects article URLs, checks `robots.txt`, and downloads HTML to `data/raw/<id>.html`. It also maintains `data/raw/manifest.jsonl`.
+2. **Extract** (`extract.py`) parses HTML into schema-validated JSON records in `data/records/<id>.json`.
+3. **Index** (`index.py`) splits article bodies into chunks, generates embeddings, and stores vectors and metadata in Chroma at `data/chroma`.
+4. **Query** (`query.py`) combines semantic retrieval with structured filters over JSON records. The `--samples` option writes `results/sample_queries.md`.
 
-Re-running scrape skips HTML files that already exist. Re-running index deletes an article’s old chunks before inserting new ones.
+Rerunning scraping skips HTML files that already exist. Reindexing removes an article's previous chunks before inserting updated ones.
 
 ## Stage design
 
 ### Scrape
 
-`robots.txt` is fetched with a five-second timeout and parsed before any article request. If it cannot be fetched or parsed, the process exits. Paths that the file disallows are skipped.
+The scraper fetches and parses `robots.txt` before requesting articles. If the robots policy cannot be fetched or parsed, the process exits. Disallowed paths are skipped.
 
-Requests use a delay, timeouts, and exponential backoff. Failures are appended to `data/logs/failed_urls.jsonl`. The manifest stores `id`, `url`, `fetched_at`, and `http_status`. This stage does not clean or parse article text. The run is treated as successful only when at least 50 HTML files are on disk.
+Requests use delays, timeouts, and exponential backoff. Failed URLs are recorded in `data/logs/failed_urls.jsonl`. The manifest stores the article ID, URL, fetch timestamp, and HTTP status.
 
-Trade-off: a conservative delay makes a full crawl slower, but it is the responsible default for a public news site.
+This stage saves the original HTML without extracting or cleaning article text. A run is considered successful only when at least 50 HTML files are present on disk.
+
+**Trade-off:** A conservative request delay makes a full crawl slower, but reduces unnecessary load on a public news website.
 
 ### Extract
 
-Parsing uses BeautifulSoup. Title, canonical URL, author, and `published_at` come from standard meta tags, with DOM fallbacks. Body text is taken from article/content containers after dropping nav, footer, scripts, and obvious chrome. `published_at` is normalised to ISO 8601 in `Asia/Kolkata`.
+BeautifulSoup parses the HTML. Titles, canonical URLs, authors, and publication timestamps are extracted from standard metadata tags, with DOM fallbacks where available.
 
-Companies, people, locations, category, and funding are filled with regular expressions and a small location list. Funding fields are `amount`, `currency`, `round`, `investors`, and `announced_at` (article timestamp when a more specific raise date is not present). This is deterministic and free of model APIs. It will miss informal phrasing and can attach a wrong proper noun.
+Body text is taken from article or content containers after removing navigation, footer elements, scripts, and obvious page chrome. Publication timestamps are normalised to ISO 8601 in `Asia/Kolkata`.
 
-Records are validated with Pydantic. Failures go to `data/logs/extract_failures.jsonl`.
+Companies, people, locations, categories, and funding details are extracted using regular expressions and a small location list. Funding fields include:
 
-### How to measure extraction accuracy
+- `amount`
+- `currency`
+- `round`
+- `investors`
+- `announced_at`
 
-Do not treat heuristic fields as ground truth. A practical check:
+When a more specific funding announcement date is unavailable, the article timestamp is used as a fallback.
+
+This deterministic approach avoids model API costs but can miss informal phrasing or incorrectly identify proper nouns. Pydantic validates extracted records, and extraction failures are recorded in `data/logs/extract_failures.jsonl`.
+
+### Measuring extraction accuracy
+
+Heuristic extraction should not be treated as ground truth. A practical evaluation procedure is:
 
 1. Draw a random sample of 20 extracted records.
-2. Open the matching raw HTML and label title, date, body cleanliness (no nav/ads), companies, people, locations, category, and funding.
-3. Score exact match for title/date/category; precision and recall for list fields; true/false for “body is article text only”.
-4. Report field-level rates. A field below ~0.8 precision should be the first thing to replace (spaCy NER or a supervised pass).
+2. Compare each record with its corresponding raw HTML.
+3. Label title, date, body cleanliness, companies, people, locations, category, and funding.
+4. Measure exact-match accuracy for title, date, and category; precision and recall for list fields; and the proportion of records whose body contains article text without obvious page chrome.
+5. Report accuracy separately for each field.
 
-If a labelled sample is not in this repository, run the protocol above before claiming field accuracy.
-
-### Index
-
-Bodies are split into ~800 character chunks with 120 characters of overlap, breaking on a sentence boundary when one exists in the second half of the window. 800 characters is a short paragraph for MiniLM; overlap reduces entities split across chunk edges. Smaller chunks retrieve more precisely and lose context; larger chunks dilute the embedding.
-
-Embeddings: `all-MiniLM-L6-v2` (local, 384 dimensions). It is fast enough for a few thousand chunks and weaker than larger retrieval models on subtle phrasing.
-
-Chroma metadata only stores strings, numbers, and booleans. Company and location lists are joined into comma-separated strings. Filters that need exact membership scan the JSON records rather than relying on substring metadata.
-
-Re-index: delete all chunks with that `article_id`, then add the new set.
-
-### Query
-
-There is no LLM in the default path. Answers are extractive (sentences copied from retrieved chunks) or structured (fields read from JSON). The README and `results/sample_queries.md` state that clearly.
-
-| Query type | Method |
-|---|---|
-| Thematic (for example AI) | Semantic search over chunks, then extractive sentences plus source URLs |
-| Funding in the last *N* days | Filter JSON on `published_at` and `funding` / category |
-| Company announcements | Filter JSON `companies` (and title), then search those article ids |
-| Location list (Bengaluru) | Exhaustive JSON/`locations` scan, list every matching URL |
-| Layoffs this month | Category + calendar-month filter, then extractive summary |
-| Investors in more than one round | Aggregate `funding.investors` across records |
-| One titled article / revenue | Resolve title, search only that article’s chunks |
-| Out of corpus (weather) | Refuse. No retrieved text is used to invent weather |
-
-If nothing supports the answer, the tool says so and lists no sources.
-
-## Data included in the tree
-
-- `data/samples/raw/` — five downloaded HTML files
-- `data/samples/records/` — the five matching JSON records
-- `results/sample_queries.md` — the eight assignment questions run against the local index
-
-Full crawl output lives in `data/raw/` and `data/records/` (ignored for version control except via the sample copies).
-
-## Tests
-
-`python -m pytest` covers schema validation, date normalisation, URL deduplication, robots.txt abort, chunk metadata types, re-index without duplicates, date/company/category/location filters, investor aggregation, and out-of-corpus refusal.
-
-## Known limitations
-
-- Inc42 markup can change; a selector miss yields an extract failure rather than a guessed body.
-- Entity and funding extraction is pattern-based. Investor aggregation is only as good as those patterns.
-- “Last 7 days” and “this month” depend on the crawl date. Older crawls can honestly return empty sets.
-- Extractive answers can be choppy. They are not fluent multi-document writing.
-- Semantic similarity can retrieve loosely related AI mentions for a broad prompt.
-
-## Another week
-
-- Label 20–50 records and replace heuristic NER with a measured model.
-- Hybrid keyword + vector search and a cross-encoder re-ranker.
-- Incremental crawl on a schedule, using the manifest as a watermark.
-- A small evaluation set for the eight query types with graded answers.
-- Optional local generative model that is still required to quote retrieved spans.
-
-## Layout
-
-```
-scrape.py / extract.py / index.py / query.py
-src/           pipeline code
-tests/         pytest modules
-data/raw       untouched HTML + manifest
-data/records   validated JSON
-data/chroma    vector store
-data/samples   five-file sample
-results/       sample query write-up
-```
+A field with precision below approximately 0.8 should be prioritised for improvement, potentially using spaCy NER or a supervised extraction
