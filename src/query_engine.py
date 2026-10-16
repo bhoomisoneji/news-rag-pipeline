@@ -68,7 +68,6 @@ def extractive_from_chunks(
         chunk = re.sub(r"\s+", " ", chunk).strip()
         sentences = re.split(r"(?<=[.!?])\s+", chunk)
 
-        # Skip a partial opening sentence from an overlapping chunk.
         if chunk and not chunk[0].isupper():
             sentences = sentences[1:]
 
@@ -304,7 +303,7 @@ def semantic_search(
     metadatas = (result.get("metadatas") or [[]])[0]
     distances = (result.get("distances") or [[]])[0]
 
-    # Keep only the best chunk from each article.
+
     selected_documents = []
     selected_metadatas = []
     selected_distances = []
@@ -629,7 +628,7 @@ def route_query(query: str, records: list[ArticleRecord], collection) -> dict:
     if LAYOFFS_RE.search(query) and re.search(r"\bmonth\b", query, re.I):
         return answer_layoffs(records, collection, query)
     
-    # Match company names present in extracted records.
+
     company_names = sorted(
         {
             name.strip()
@@ -644,7 +643,6 @@ def route_query(query: str, records: list[ArticleRecord], collection) -> dict:
         if re.search(rf"(?<!\w){re.escape(company)}(?!\w)", query, re.I):
             return answer_company(collection, records, company, query)
 
-    # Handle funding questions from collected records.
     if re.search(r"\b(funding|fundraise|fundraising|raised)\b", query, re.I):
         matched = [
             record
