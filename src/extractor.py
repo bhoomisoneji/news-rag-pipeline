@@ -263,7 +263,6 @@ def extract_published_at(soup: BeautifulSoup) -> datetime | None:
 def clean_body(soup: BeautifulSoup) -> str:
     work = BeautifulSoup(str(soup), "lxml")
 
-    # Prefer the actual article element, not the entire webpage.
     article = work.select_one("article")
     if article is None:
         article = work
@@ -272,7 +271,6 @@ def clean_body(soup: BeautifulSoup) -> str:
         for node in article.select(selector):
             node.decompose()
 
-    # Remove promotional and non-article sections.
     for selector in [
         ".single-taxonomy-wrap",
         ".entry-header",
@@ -443,8 +441,7 @@ def parse_amount(raw: str, unit: str | None) -> tuple[float | None, str | None]:
 
 def extract_funding(title: str, body: str, published_at: datetime) -> FundingInfo | None:
     text = f"{title}. {body}"
-    
-    # Only accept titles that indicate a completed funding announcement.
+
     if not re.search(
         r"\b(raises?|raised|bags?|bagged|secures?|secured)\b",
         title,
@@ -452,7 +449,6 @@ def extract_funding(title: str, body: str, published_at: datetime) -> FundingInf
     ):
         return None
 
-    # Reject proposed or planned fundraises.
     if re.search(
         r"\b(eyes?|plans?|planning|considering|proposes?|proposed|"
         r"to raise|may raise|could raise|seeks? to raise)\b",
@@ -461,8 +457,7 @@ def extract_funding(title: str, body: str, published_at: datetime) -> FundingInf
     ):
         return None
 
-    # Prefer the title and opening funding announcement, not arbitrary
-    # financial figures elsewhere in the article.
+   
     sentences = re.split(r"(?<=[.!?])\s+", text)
     funding_sentence = None
 
@@ -481,7 +476,6 @@ def extract_funding(title: str, body: str, published_at: datetime) -> FundingInf
     amount = None
     currency = None
 
-    # Use the first explicit amount in the funding announcement.
     amount_match = AMOUNT_PATTERN.search(funding_sentence)
 
     if amount_match:
@@ -502,7 +496,7 @@ def extract_funding(title: str, body: str, published_at: datetime) -> FundingInf
 
 
 
-    # Extract investors from the opening funding announcement.
+  
     investors: list[str] = []
 
     for match in INVESTOR_PATTERN.finditer(" ".join(sentences[:8])):
