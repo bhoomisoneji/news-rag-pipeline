@@ -134,3 +134,19 @@ Heuristic extraction should not be treated as ground truth. A practical evaluati
 5. Report accuracy separately for each field.
 
 A field with precision below approximately 0.8 should be prioritised for improvement, potentially using spaCy NER or a supervised extraction
+## Chunking and Embeddings
+
+The pipeline uses ChromaDB to store vector embeddings with article metadata. The configured chunk size is 800 and the overlap is 120. The overlap helps preserve context when relevant information falls near a chunk boundary.
+
+The embedding model is `all-MiniLM-L6-v2`, loaded locally through Sentence Transformers. This avoids dependence on a paid embedding API, although retrieval quality still needs to be measured against representative questions.
+
+## Known Limitations
+
+- Entity and funding extraction relies on regular expressions and predefined patterns, so it can miss unfamiliar names or incorrectly identify entities.
+- Retrieval quality depends on the extracted article text, chunk boundaries, embedding model and metadata filters.
+- The evaluation script checks predefined criteria and source presence. Its score should not be interpreted as a measurement of factual accuracy or answer fluency.
+- Performance and extraction quality may vary as the source website changes its HTML structure.
+
+## What I Would Improve With Another Week
+
+I would create a manually labelled evaluation set, measure entity and funding extraction precision and recall, improve investor aggregation, and test retrieval quality across different question types. I would also improve multi-article answer formatting and add regression tests for extraction errors discovered during evaluation.
